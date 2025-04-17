@@ -17,7 +17,11 @@ class PdfViewerPage extends StatelessWidget {
       body: PdfViewer(
         documentRef,
         initialPageNumber: 1,
-        params: const PdfViewerParams(maxScale: 8, margin: 20),
+        params: const PdfViewerParams(
+          maxScale: 8,
+          margin: 20,
+          enableTextSelection: true,
+        ),
       ),
     );
   }

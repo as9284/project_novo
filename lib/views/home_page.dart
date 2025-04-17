@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pdf_viewer_page.dart';
 import '../utils/utils.dart';
+import 'dart:io';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,6 +13,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  static const String prefsKey = 'recent_files';
+  static const int maxRecentFiles = 10;
   List<String> recentFiles = [];
 
   @override
@@ -22,9 +25,62 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> loadRecentFiles() async {
     final prefs = await SharedPreferences.getInstance();
+    final files = prefs.getStringList(prefsKey) ?? [];
+
+    // Filter only valid PDF files that still exist
+    final validFiles =
+        files
+            .where(
+              (path) =>
+                  path.toLowerCase().endsWith('.pdf') &&
+                  File(path).existsSync(),
+            )
+            .toList();
+
+    // Update prefs if we filtered out any invalid files
+    if (validFiles.length != files.length) {
+      await prefs.setStringList(prefsKey, validFiles);
+    }
+
     setState(() {
-      recentFiles = prefs.getStringList('recent_files') ?? [];
+      recentFiles = validFiles;
     });
+  }
+
+  Future<void> updateRecentFiles(String filePath) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Create a new list without the current path (if it exists)
+    final updatedList = recentFiles.where((path) => path != filePath).toList();
+
+    // Add the new path at the beginning
+    updatedList.insert(0, filePath);
+
+    // Trim to max length
+    final trimmedList = updatedList.take(maxRecentFiles).toList();
+
+    // Save to prefs
+    await prefs.setStringList(prefsKey, trimmedList);
+
+    setState(() {
+      recentFiles = trimmedList;
+    });
+  }
+
+  Future<void> clearRecentFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(prefsKey, []);
+
+    setState(() {
+      recentFiles = [];
+    });
+
+    // Show confirmation to user
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recent files list cleared')),
+      );
+    }
   }
 
   Future<void> openPdfFile() async {
@@ -35,9 +91,15 @@ class _HomePageState extends State<HomePage> {
 
     if (result != null && result.files.single.path != null) {
       final filePath = result.files.single.path!;
-      await addToRecentFiles(filePath);
+
+      if (!filePath.toLowerCase().endsWith('.pdf')) return;
+
+      // Update recent files
+      await updateRecentFiles(filePath);
+
       if (mounted) {
-        Navigator.push(
+        // Navigate to PDF viewer
+        await Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => PdfViewerPage(filePath: filePath)),
         );
@@ -45,25 +107,24 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> addToRecentFiles(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    final files = prefs.getStringList('recent_files') ?? [];
+  Future<void> openRecentFile(String path) async {
+    if (!File(path).existsSync()) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('File not found')));
+      loadRecentFiles();
+      return;
+    }
 
-    files.remove(path);
-    files.insert(0, path);
-    if (files.length > 5) files.removeLast();
+    // Update recent files to move this to the top
+    await updateRecentFiles(path);
 
-    await prefs.setStringList('recent_files', files);
-    setState(() {
-      recentFiles = files;
-    });
-  }
-
-  void openRecentFile(String path) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => PdfViewerPage(filePath: path)),
-    );
+    if (mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PdfViewerPage(filePath: path)),
+      );
+    }
   }
 
   @override
@@ -79,7 +140,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: () {
               Navigator.pushNamed(context, "/settings");
             },
-            icon: Icon(Icons.settings),
+            icon: const Icon(Icons.settings),
           ),
         ],
       ),
@@ -93,7 +154,48 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Recently Opened', style: TextStyle(fontSize: 18)),
+            // Header row with title and clear button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Recently Opened', style: TextStyle(fontSize: 18)),
+                if (recentFiles.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () {
+                      // Show confirmation dialog
+                      showDialog(
+                        context: context,
+                        builder:
+                            (context) => AlertDialog(
+                              title: const Text('Clear Recent Files'),
+                              content: const Text(
+                                'Are you sure you want to clear the list of recently opened files?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text('CANCEL'),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                    clearRecentFiles();
+                                  },
+                                  child: const Text('CLEAR'),
+                                ),
+                              ],
+                            ),
+                      );
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Clear'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             Expanded(
               child:
