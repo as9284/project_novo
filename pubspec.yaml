@@ -1,7 +1,7 @@
 name: novo
 description: "Minimalistic PDF viewer app"
 publish_to: "none"
-version: 1.0.0
+version: 1.0.3
 
 environment:
   sdk: ^3.7.2
@@ -14,6 +14,10 @@ dependencies:
   package_info_plus: ^8.3.0
   pdfrx: ^1.1.23
   file_picker: ^10.1.2
+  receive_sharing_intent:
+    git:
+      url: https://github.com/KasemJaffer/receive_sharing_intent
+      ref: 2cea396843cd3ab1b5ec4334be4233864637874e
 
 dev_dependencies:
   flutter_test:

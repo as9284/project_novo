@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'pdf_viewer_page.dart';
-import '../utils/utils.dart';
 import 'dart:io';
 
+import 'pdf_viewer_page.dart';
+import '../utils/utils.dart';
+
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final String? sharedFile;
+
+  const HomePage({super.key, this.sharedFile});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -27,7 +30,6 @@ class _HomePageState extends State<HomePage> {
     final prefs = await SharedPreferences.getInstance();
     final files = prefs.getStringList(prefsKey) ?? [];
 
-    // Filter only valid PDF files that still exist
     final validFiles =
         files
             .where(
@@ -37,7 +39,6 @@ class _HomePageState extends State<HomePage> {
             )
             .toList();
 
-    // Update prefs if we filtered out any invalid files
     if (validFiles.length != files.length) {
       await prefs.setStringList(prefsKey, validFiles);
     }
@@ -49,17 +50,11 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> updateRecentFiles(String filePath) async {
     final prefs = await SharedPreferences.getInstance();
-
-    // Create a new list without the current path (if it exists)
     final updatedList = recentFiles.where((path) => path != filePath).toList();
 
-    // Add the new path at the beginning
     updatedList.insert(0, filePath);
-
-    // Trim to max length
     final trimmedList = updatedList.take(maxRecentFiles).toList();
 
-    // Save to prefs
     await prefs.setStringList(prefsKey, trimmedList);
 
     setState(() {
@@ -75,7 +70,6 @@ class _HomePageState extends State<HomePage> {
       recentFiles = [];
     });
 
-    // Show confirmation to user
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Recent files list cleared')),
@@ -94,15 +88,15 @@ class _HomePageState extends State<HomePage> {
 
       if (!filePath.toLowerCase().endsWith('.pdf')) return;
 
-      // Update recent files
       await updateRecentFiles(filePath);
 
       if (mounted) {
-        // Navigate to PDF viewer
         await Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => PdfViewerPage(filePath: filePath)),
         );
+
+        await loadRecentFiles();
       }
     }
   }
@@ -116,7 +110,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Update recent files to move this to the top
     await updateRecentFiles(path);
 
     if (mounted) {
@@ -124,6 +117,33 @@ class _HomePageState extends State<HomePage> {
         context,
         MaterialPageRoute(builder: (_) => PdfViewerPage(filePath: path)),
       );
+
+      await loadRecentFiles();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (widget.sharedFile != null && !_openedSharedFile) {
+      _openedSharedFile = true;
+      Future.microtask(() => _openSharedFile(widget.sharedFile!));
+    }
+  }
+
+  bool _openedSharedFile = false;
+
+  Future<void> _openSharedFile(String path) async {
+    if (!File(path).existsSync()) return;
+    await updateRecentFiles(path);
+    if (mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PdfViewerPage(filePath: path)),
+      );
+
+      await loadRecentFiles();
     }
   }
 
@@ -154,7 +174,6 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row with title and clear button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -162,7 +181,6 @@ class _HomePageState extends State<HomePage> {
                 if (recentFiles.isNotEmpty)
                   TextButton.icon(
                     onPressed: () {
-                      // Show confirmation dialog
                       showDialog(
                         context: context,
                         builder:
